@@ -30,6 +30,7 @@ class Website(Base):
     website = Column(String(512), nullable=False, index=True)
     contact_name = Column(String(256), nullable=True)
     contact_email = Column(String(256), nullable=True)
+    created_by = Column(String(128), nullable=True)
     module = Column(String(32), nullable=True)  # Free, Outreach, Exchange, Pay
     traffic = Column(Integer, nullable=True)
     da = Column(Integer, nullable=True)
@@ -60,6 +61,24 @@ def init_db() -> None:
     os.makedirs(BASE_DIR, exist_ok=True)
     Base.metadata.create_all(bind=engine)
 
+    # Backwards-compatible: add missing columns to existing SQLite tables when possible
+    conn = engine.connect()
+    try:
+        try:
+            res = conn.execute("PRAGMA table_info(websites)")
+            cols = [r[1] for r in res.fetchall()]
+            if 'created_by' not in cols:
+                try:
+                    conn.execute("ALTER TABLE websites ADD COLUMN created_by TEXT")
+                except Exception:
+                    # If ALTER fails for any reason, continue — the column is optional
+                    pass
+        except Exception:
+            # PRAGMA not supported or other failure; ignore
+            pass
+    finally:
+        conn.close()
+
 
 def get_session() -> Session:
     return SessionLocal()
@@ -68,6 +87,9 @@ def get_session() -> Session:
 def add_website(data: Dict[str, Any], user: Optional[str] = None) -> Website:
     s = get_session()
     try:
+        # attach creator if provided
+        if user:
+            data['created_by'] = user
         w = Website(**data)
         s.add(w)
         s.commit()
