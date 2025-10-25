@@ -1,0 +1,10 @@
+.venv/
+websites.db
+websites_export.csv
+__pycache__/
+.pytest_cache/
+*.pyc
+*.pyo
+env/
+venv/
+/.vscode/

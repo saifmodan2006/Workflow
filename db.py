@@ -65,13 +65,19 @@ def get_session() -> Session:
     return SessionLocal()
 
 
-def add_website(data: Dict[str, Any]) -> Website:
+def add_website(data: Dict[str, Any], user: Optional[str] = None) -> Website:
     s = get_session()
     try:
         w = Website(**data)
         s.add(w)
         s.commit()
         s.refresh(w)
+
+        # create activity log for creation
+        log = ActivityLog(website_id=w.id, action='created', note=None, user=user)
+        s.add(log)
+        s.commit()
+
         return w
     finally:
         s.close()
