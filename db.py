@@ -13,6 +13,9 @@ from sqlalchemy import (
     Date,
 )
 from sqlalchemy.orm import declarative_base, sessionmaker, Session
+from sqlalchemy.exc import OperationalError
+import sqlite3
+from types import SimpleNamespace
 
 BASE_DIR = os.path.dirname(__file__)
 DB_PATH = os.path.join(BASE_DIR, "websites.db")
@@ -146,7 +149,36 @@ def list_websites(filters: Dict[str, Any] = None, limit: int = 1000) -> List[Web
                 q = q.filter(Website.da >= filters['min_da'])
             if 'max_da' in filters and filters['max_da'] is not None:
                 q = q.filter(Website.da <= filters['max_da'])
-        return q.order_by(Website.id).limit(limit).all()
+        try:
+            return q.order_by(Website.id).limit(limit).all()
+        except OperationalError as oe:
+            # If the DB schema doesn't yet contain a column the model expects
+            msg = str(oe).lower()
+            if 'no such column' in msg and 'created_by' in msg:
+                # Fallback: do a raw SQL select that excludes created_by and return simple objects
+                try:
+                    conn = sqlite3.connect(DB_PATH)
+                    cur = conn.cursor()
+                    cols = [
+                        'id', 'website', 'contact_name', 'contact_email', 'module', 'traffic', 'da',
+                        'status', 'outreach_count', 'last_contacted', 'next_followup', 'assignee',
+                        'notes', 'source', 'created_at', 'updated_at'
+                    ]
+                    sel = f"SELECT {', '.join(cols)} FROM websites"
+                    cur.execute(sel)
+                    rows = cur.fetchall()
+                    results = []
+                    for row in rows:
+                        d = {cols[i]: row[i] for i in range(len(cols))}
+                        results.append(SimpleNamespace(**d))
+                    return results
+                finally:
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass
+            # otherwise re-raise
+            raise
     finally:
         s.close()
 
