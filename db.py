@@ -232,7 +232,32 @@ def export_csv(path: str) -> int:
 
     s = get_session()
     try:
-        rows = s.query(Website).all()
+        try:
+            rows = s.query(Website).all()
+        except OperationalError as oe:
+            # fallback when DB schema misses columns (e.g. created_by)
+            msg = str(oe).lower()
+            if 'no such column' in msg and 'created_by' in msg:
+                # raw select without created_by
+                conn = sqlite3.connect(DB_PATH)
+                try:
+                    cur = conn.cursor()
+                    cols = [
+                        'id', 'website', 'contact_name', 'contact_email', 'module', 'traffic', 'da',
+                        'status', 'outreach_count', 'last_contacted', 'next_followup', 'assignee',
+                        'notes', 'source', 'created_at', 'updated_at'
+                    ]
+                    sel = f"SELECT {', '.join(cols)} FROM websites"
+                    cur.execute(sel)
+                    raw_rows = cur.fetchall()
+                    rows = []
+                    for r in raw_rows:
+                        d = {cols[i]: r[i] for i in range(len(cols))}
+                        rows.append(SimpleNamespace(**d))
+                finally:
+                    conn.close()
+            else:
+                raise
         data = []
         for r in rows:
             data.append({
